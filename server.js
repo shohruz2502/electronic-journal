@@ -1,4 +1,4 @@
-// Электронный журнал — Express + PostgreSQL + Socket.IO
+// server.js - Электронный журнал для Vercel + Supabase
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -8,32 +8,27 @@ const http = require('http');
 
 const app = express();
 const server = http.createServer(app);
-const io = require('socket.io')(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
 
-// PostgreSQL connection pool
+// PostgreSQL connection pool для Supabase
 const pool = new Pool({
   connectionString: process.env.POSTGRES_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: { rejectUnauthorized: false }
 });
+
+// Middleware
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Test database connection
 pool.connect((err, client, release) => {
   if (err) {
-    console.error('Error connecting to PostgreSQL:', err);
+    console.error('❌ Error connecting to PostgreSQL:', err);
   } else {
-    console.log('Connected to PostgreSQL database');
+    console.log('✅ Connected to PostgreSQL database');
     release();
   }
 });
-
-app.use(cors());
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
 // Initialize tables
 async function initializeDatabase() {
@@ -63,7 +58,19 @@ async function initializeDatabase() {
       )
     `);
 
-    // Таблица для общих записей (оставлена для обратной совместимости)
+    // Таблица пользователей
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Таблица для общих записей
     await pool.query(`
       CREATE TABLE IF NOT EXISTS entries (
         id SERIAL PRIMARY KEY,
@@ -75,23 +82,66 @@ async function initializeDatabase() {
     `);
 
     // Создаем индексы для улучшения производительности
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date)
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_attendance_student_date ON attendance(student_id, date)
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_attendance_student_date_hour ON attendance(student_id, date, hour)
-    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_attendance_student_date ON attendance(student_id, date)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_attendance_student_date_hour ON attendance(student_id, date, hour)`);
 
-    console.log('Database tables initialized successfully');
+    console.log('✅ Database tables initialized successfully');
+    
+    // Создаем тестового пользователя если нет пользователей
+    const usersResult = await pool.query('SELECT COUNT(*) FROM users');
+    if (parseInt(usersResult.rows[0].count) === 0) {
+      await pool.query(
+        'INSERT INTO users (username, password, role, name) VALUES ($1, $2, $3, $4), ($5, $6, $7, $8), ($9, $10, $11, $12)',
+        [
+          'admin', 'admin123', 'admin', 'Администратор системы',
+          'dekan', 'dekan123', 'dekan', 'Декан факультета', 
+          'dezhur', 'dezhur123', 'dezhur', 'Дежурный преподаватель'
+        ]
+      );
+      console.log('✅ Default users created');
+    }
   } catch (error) {
-    console.error('Error initializing database:', error);
+    console.error('❌ Error initializing database:', error);
   }
 }
 
 initializeDatabase();
+
+// ===== API ROUTES =====
+
+// API для аутентификации
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    const result = await pool.query(
+      'SELECT * FROM users WHERE username = $1 AND password = $2',
+      [username, password]
+    );
+    
+    if (result.rows.length > 0) {
+      const user = result.rows[0];
+      res.json({
+        success: true,
+        user: {
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          role: user.role
+        }
+      });
+    } else {
+      res.status(401).json({
+        success: false,
+        error: 'Неверные учетные данные'
+      });
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // API для студентов
 app.get('/api/students', async (req, res) => {
@@ -135,7 +185,6 @@ app.post('/api/students', async (req, res) => {
       course: inserted.course
     };
     
-    io.emit('student_added', studentForClient);
     res.json(studentForClient);
   } catch (error) {
     console.error('Error adding student:', error);
@@ -162,7 +211,6 @@ app.delete('/api/students/:id', async (req, res) => {
       await client.query('DELETE FROM students WHERE id = $1', [id]);
       await client.query('COMMIT');
       
-      io.emit('student_deleted', id);
       res.json({ deletedId: id, message: 'Student deleted successfully' });
     } catch (error) {
       await client.query('ROLLBACK');
@@ -286,7 +334,6 @@ app.post('/api/attendance', async (req, res) => {
       hour: hour
     };
     
-    io.emit('attendance_updated', attendanceData);
     res.json({ success: true, ...attendanceData });
     
   } catch (error) {
@@ -385,7 +432,6 @@ app.post('/api/students/batch', async (req, res) => {
           };
           
           results.push(studentForClient);
-          io.emit('student_added', studentForClient);
           
         } catch (error) {
           console.error(`Error adding student ${name}:`, error);
@@ -457,7 +503,6 @@ app.post('/api/entries', async (req, res) => {
       [name, date, note, updatedAt]
     );
     const inserted = result.rows[0];
-    io.emit('refresh');
     res.json(inserted);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -474,7 +519,6 @@ app.put('/api/entries/:id', async (req, res) => {
       [name, date, note, updatedAt, id]
     );
     const updated = result.rows[0];
-    io.emit('refresh');
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -488,7 +532,6 @@ app.delete('/api/entries/:id', async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     
     await pool.query('DELETE FROM entries WHERE id = $1', [id]);
-    io.emit('refresh');
     res.json({ deletedId: id });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -515,28 +558,13 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Socket.IO
-io.on('connection', (socket) => {
-  console.log('Socket connected:', socket.id);
-  
-  socket.on('disconnect', () => {
-    console.log('Socket disconnected:', socket.id);
-  });
+// Serve main page
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
-  socket.on('student_added', (data) => {
-    console.log('Student added via socket:', data);
-    socket.broadcast.emit('student_added', data);
-  });
-
-  socket.on('student_deleted', (data) => {
-    console.log('Student deleted via socket:', data);
-    socket.broadcast.emit('student_deleted', data);
-  });
-
-  socket.on('attendance_updated', (data) => {
-    console.log('Attendance updated via socket:', data);
-    socket.broadcast.emit('attendance_updated', data);
-  });
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
 // Error handling middleware
@@ -553,7 +581,9 @@ app.use((req, res) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log('🚀 Server listening on port', PORT);
-  console.log('📊 Database: PostgreSQL');
-  console.log('🔗 Health check: http://localhost:' + PORT + '/api/health');
+  console.log('📊 Database: PostgreSQL (Supabase)');
+  console.log('🔗 Health check: /api/health');
   console.log('⏰ Почасовой учет посещаемости активирован');
 });
+
+module.exports = app;
