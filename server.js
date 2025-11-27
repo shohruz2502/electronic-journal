@@ -1,38 +1,43 @@
-// server.js - Электронный журнал для Vercel + Supabase
+// server.js - Электронный журнал для Vercel + Neon PostgreSQL
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const { Pool } = require('pg');
 const path = require('path');
 const http = require('http');
+const socketIo = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
-// PostgreSQL connection pool для Supabase
+// Настройка PostgreSQL для Neon
 const pool = new Pool({
   connectionString: process.env.POSTGRES_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 // Middleware
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Test database connection
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error('❌ Error connecting to PostgreSQL:', err);
-  } else {
-    console.log('✅ Connected to PostgreSQL database');
-    release();
-  }
-});
+// Флаг для отслеживания импорта студентов
+let studentsImported = false;
 
-// Initialize tables
+// Инициализация базы данных
 async function initializeDatabase() {
   try {
+    console.log('🔄 Инициализация базы данных...');
+
     // Таблица студентов
     await pool.query(`
       CREATE TABLE IF NOT EXISTS students (
@@ -70,53 +75,115 @@ async function initializeDatabase() {
       )
     `);
 
-    // Таблица для общих записей
+    // Таблица сохраненных дней (для блокировки редактирования)
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS entries (
+      CREATE TABLE IF NOT EXISTS saved_days (
         id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        date TEXT,
-        note TEXT,
-        updatedAt TEXT
+        date TEXT NOT NULL,
+        group_name TEXT NOT NULL,
+        saved_by INTEGER,
+        saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(date, group_name),
+        FOREIGN KEY(saved_by) REFERENCES users(id)
       )
     `);
 
-    // Создаем индексы для улучшения производительности
+    // Таблица для отслеживания импорта
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS import_status (
+        id SERIAL PRIMARY KEY,
+        imported BOOLEAN DEFAULT FALSE,
+        imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Таблица причин пропусков
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS absence_reasons (
+        id SERIAL PRIMARY KEY,
+        student_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        hour INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(student_id, date, hour),
+        FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Создаем индексы для производительности
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_attendance_student_date ON attendance(student_id, date)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_attendance_student_date_hour ON attendance(student_id, date, hour)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_students_group ON students(group_name)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_absence_reasons_student_date ON absence_reasons(student_id, date)`);
 
-    console.log('✅ Database tables initialized successfully');
-    
-    // Создаем тестового пользователя если нет пользователей
+    console.log('✅ Таблицы базы данных инициализированы');
+
+    // Проверяем статус импорта
+    const importStatus = await pool.query('SELECT * FROM import_status ORDER BY id DESC LIMIT 1');
+    if (importStatus.rows.length > 0) {
+      studentsImported = importStatus.rows[0].imported;
+    }
+
+    // Создаем тестовых пользователей если их нет
     const usersResult = await pool.query('SELECT COUNT(*) FROM users');
     if (parseInt(usersResult.rows[0].count) === 0) {
       await pool.query(
-        'INSERT INTO users (username, password, role, name) VALUES ($1, $2, $3, $4), ($5, $6, $7, $8), ($9, $10, $11, $12)',
+        `INSERT INTO users (username, password, role, name) VALUES 
+         ($1, $2, $3, $4), 
+         ($5, $6, $7, $8), 
+         ($9, $10, $11, $12)`,
         [
           'admin', 'admin123', 'admin', 'Администратор системы',
           'dekan', 'dekan123', 'dekan', 'Декан факультета', 
-          'dezhur', 'dezhur123', 'dezhur', 'Дежурный преподаватель'
+          'dezhur', '123', 'dezhur', 'Дежурный преподаватель'
         ]
       );
-      console.log('✅ Default users created');
+      console.log('✅ Тестовые пользователи созданы');
     }
+
+    // Создаем тестовых студентов если импорт еще не выполнялся
+    const studentsResult = await pool.query('SELECT COUNT(*) FROM students');
+    if (parseInt(studentsResult.rows[0].count) === 0 && !studentsImported) {
+      const testStudents = [
+        { name: 'Алишер Усманов', group: '1-260101-00-a', course: 1 },
+        { name: 'Фарход Рахимов', group: '1-260101-00-a', course: 1 },
+        { name: 'Шахзод Усупов', group: '1-260101-00-a', course: 1 },
+        { name: 'Галина Толочко', group: '1-250107', course: 1 },
+        { name: 'Мирослав Ульяненко', group: '1-250107', course: 1 }
+      ];
+
+      for (const student of testStudents) {
+        await pool.query(
+          'INSERT INTO students (name, group_name, course) VALUES ($1, $2, $3)',
+          [student.name, student.group, student.course]
+        );
+      }
+      console.log('✅ Тестовые студенты созданы');
+    }
+
   } catch (error) {
-    console.error('❌ Error initializing database:', error);
+    console.error('❌ Ошибка инициализации базы данных:', error);
   }
 }
 
-initializeDatabase();
-
 // ===== API ROUTES =====
 
-// API для аутентификации
+// Аутентификация
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     
+    if (!username || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Логин и пароль обязательны' 
+      });
+    }
+
     const result = await pool.query(
-      'SELECT * FROM users WHERE username = $1 AND password = $2',
+      'SELECT id, username, name, role FROM users WHERE username = $1 AND password = $2',
       [username, password]
     );
     
@@ -139,79 +206,90 @@ app.post('/api/login', async (req, res) => {
     }
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      error: 'Внутренняя ошибка сервера' 
+    });
   }
 });
 
-// API для студентов
+// Получение списка студентов
 app.get('/api/students', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM students ORDER BY name ASC');
+    const result = await pool.query(`
+      SELECT id, name, group_name as group, course, created_at 
+      FROM students 
+      ORDER BY group_name, name ASC
+    `);
     
-    const students = result.rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      group: row.group_name,
-      course: row.course,
-      created_at: row.created_at
-    }));
-    
-    res.json(students);
+    res.json(result.rows);
   } catch (error) {
     console.error('Error getting students:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// Добавление студента
 app.post('/api/students', async (req, res) => {
   try {
     const { name, group, course } = req.body;
-    console.log('Adding student:', { name, group, course });
     
     if (!name || !group || course === undefined) {
-      return res.status(400).json({ error: 'Missing required fields: name, group, course' });
+      return res.status(400).json({ 
+        error: 'Все поля обязательны: name, group, course' 
+      });
     }
 
     const result = await pool.query(
-      'INSERT INTO students (name, group_name, course) VALUES ($1, $2, $3) RETURNING *',
-      [name, group, course]
+      `INSERT INTO students (name, group_name, course) 
+       VALUES ($1, $2, $3) 
+       RETURNING id, name, group_name as group, course`,
+      [name, group, parseInt(course)]
     );
     
-    const inserted = result.rows[0];
-    const studentForClient = {
-      id: inserted.id,
-      name: inserted.name,
-      group: inserted.group_name,
-      course: inserted.course
-    };
+    const newStudent = result.rows[0];
+    res.json(newStudent);
     
-    res.json(studentForClient);
+    // Уведомляем всех клиентов через WebSocket
+    io.emit('student_added', newStudent);
+    
   } catch (error) {
     console.error('Error adding student:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// Удаление студента
 app.delete('/api/students/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    console.log('Deleting student:', id);
     
     // Проверяем существование студента
     const studentResult = await pool.query('SELECT * FROM students WHERE id = $1', [id]);
     if (studentResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Student not found' });
+      return res.status(404).json({ error: 'Студент не найден' });
     }
     
-    // Удаляем связанные записи посещаемости и студента в транзакции
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      
+      // Удаляем связанные записи посещаемости
       await client.query('DELETE FROM attendance WHERE student_id = $1', [id]);
+      // Удаляем студента
       await client.query('DELETE FROM students WHERE id = $1', [id]);
+      
       await client.query('COMMIT');
       
-      res.json({ deletedId: id, message: 'Student deleted successfully' });
+      res.json({ 
+        success: true, 
+        deletedId: id, 
+        message: 'Студент успешно удален' 
+      });
+      
+      // Уведомляем всех клиентов
+      io.emit('student_deleted', id);
+      
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -224,7 +302,89 @@ app.delete('/api/students/:id', async (req, res) => {
   }
 });
 
-// API для посещаемости (почасовой учет)
+// Массовое добавление студентов
+app.post('/api/students/batch', async (req, res) => {
+  try {
+    const { students: studentsList } = req.body;
+    
+    if (!studentsList || !Array.isArray(studentsList) || studentsList.length === 0) {
+      return res.status(400).json({ 
+        error: 'Список студентов обязателен и не должен быть пустым' 
+      });
+    }
+
+    if (studentsList.length > 33) {
+      return res.status(400).json({ 
+        error: 'Максимальное количество студентов для массового добавления: 33' 
+      });
+    }
+
+    const results = [];
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      for (const studentData of studentsList) {
+        const { name, group, course } = studentData;
+        
+        if (!name || !group || course === undefined) {
+          results.push({ 
+            error: 'Отсутствуют обязательные поля', 
+            student: studentData 
+          });
+          continue;
+        }
+
+        try {
+          const result = await client.query(
+            `INSERT INTO students (name, group_name, course) 
+             VALUES ($1, $2, $3) 
+             RETURNING id, name, group_name as group, course`,
+            [name.trim(), group, parseInt(course)]
+          );
+          
+          results.push(result.rows[0]);
+          
+        } catch (error) {
+          console.error(`Error adding student ${name}:`, error);
+          results.push({ 
+            error: error.message, 
+            student: studentData 
+          });
+        }
+      }
+      
+      await client.query('COMMIT');
+      
+      const successful = results.filter(r => !r.error);
+      
+      res.json({ 
+        success: true, 
+        added: successful.length,
+        errors: results.length - successful.length,
+        results 
+      });
+      
+      // Уведомляем о новых студентах
+      successful.forEach(student => {
+        io.emit('student_added', student);
+      });
+      
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+    
+  } catch (error) {
+    console.error('Error in batch add:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Получение данных о посещаемости
 app.get('/api/attendance', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -240,31 +400,33 @@ app.get('/api/attendance', async (req, res) => {
     };
     
     result.rows.forEach(row => {
-      // Для почасового учета
-      if (!attendanceData.hourly[row.date]) {
-        attendanceData.hourly[row.date] = {};
+      const { student_id, date, hour, status } = row;
+      
+      // Почасовой учет
+      if (!attendanceData.hourly[date]) {
+        attendanceData.hourly[date] = {};
       }
-      if (!attendanceData.hourly[row.date][row.student_id]) {
-        attendanceData.hourly[row.date][row.student_id] = {};
+      if (!attendanceData.hourly[date][student_id]) {
+        attendanceData.hourly[date][student_id] = {};
       }
       
-      attendanceData.hourly[row.date][row.student_id][row.hour] = row.status;
+      attendanceData.hourly[date][student_id][hour] = status;
       
-      // Для daily определяем статус по большинству часов
-      const hours = Object.values(attendanceData.hourly[row.date][row.student_id]);
+      // Ежедневный учет (определяем по большинству часов)
+      const hours = Object.values(attendanceData.hourly[date][student_id]);
       const presentCount = hours.filter(s => s === 'present').length;
       const absentCount = hours.filter(s => s === 'absent').length;
       
-      if (!attendanceData.daily[row.date]) {
-        attendanceData.daily[row.date] = {};
+      if (!attendanceData.daily[date]) {
+        attendanceData.daily[date] = {};
       }
       
       if (presentCount > absentCount) {
-        attendanceData.daily[row.date][row.student_id] = 'present';
+        attendanceData.daily[date][student_id] = 'present';
       } else if (absentCount > presentCount) {
-        attendanceData.daily[row.date][row.student_id] = 'absent';
+        attendanceData.daily[date][student_id] = 'absent';
       } else if (presentCount > 0 || absentCount > 0) {
-        attendanceData.daily[row.date][row.student_id] = 'mixed';
+        attendanceData.daily[date][student_id] = 'mixed';
       }
     });
     
@@ -275,19 +437,34 @@ app.get('/api/attendance', async (req, res) => {
   }
 });
 
+// Сохранение посещаемости
 app.post('/api/attendance', async (req, res) => {
   try {
     const { studentId, date, status, hour = null } = req.body;
-    console.log('Saving attendance:', { studentId, date, status, hour });
     
     if (!studentId || !date || !status) {
-      return res.status(400).json({ error: 'Missing required fields: studentId, date, status' });
+      return res.status(400).json({ 
+        error: 'Обязательные поля: studentId, date, status' 
+      });
     }
     
     // Проверяем существование студента
     const studentResult = await pool.query('SELECT * FROM students WHERE id = $1', [studentId]);
     if (studentResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Student not found' });
+      return res.status(404).json({ error: 'Студент не найден' });
+    }
+    
+    // Проверяем, не заблокирован ли день для редактирования
+    const group = studentResult.rows[0].group_name;
+    const savedDayResult = await pool.query(
+      'SELECT * FROM saved_days WHERE date = $1 AND group_name = $2',
+      [date, group]
+    );
+    
+    if (savedDayResult.rows.length > 0) {
+      return res.status(423).json({ 
+        error: 'Посещаемость за этот день уже сохранена и заблокирована для редактирования' 
+      });
     }
     
     if (hour !== null && hour !== undefined) {
@@ -299,28 +476,27 @@ app.post('/api/attendance', async (req, res) => {
           [studentId, date, hour]
         );
       } else {
-        // Вставляем или обновляем запись (ON CONFLICT для PostgreSQL)
+        // Вставляем или обновляем запись
         await pool.query(
           `INSERT INTO attendance (student_id, date, hour, status) 
            VALUES ($1, $2, $3, $4)
            ON CONFLICT (student_id, date, hour) 
-           DO UPDATE SET status = $4`,
+           DO UPDATE SET status = $4, created_at = CURRENT_TIMESTAMP`,
           [studentId, date, hour, status]
         );
       }
     } else {
       // Ежедневный учет (для обратной совместимости)
-      // Удаляем все часовые записи за этот день
       await pool.query(
         'DELETE FROM attendance WHERE student_id = $1 AND date = $2',
         [studentId, date]
       );
       
       if (status !== 'unknown') {
-        // Создаем записи для всех часов
         for (let h = 1; h <= 5; h++) {
           await pool.query(
-            'INSERT INTO attendance (student_id, date, hour, status) VALUES ($1, $2, $3, $4)',
+            `INSERT INTO attendance (student_id, date, hour, status) 
+             VALUES ($1, $2, $3, $4)`,
             [studentId, date, h, status]
           );
         }
@@ -336,8 +512,71 @@ app.post('/api/attendance', async (req, res) => {
     
     res.json({ success: true, ...attendanceData });
     
+    // Уведомляем всех клиентов через WebSocket
+    io.emit('attendance_updated', attendanceData);
+    
   } catch (error) {
     console.error('Error saving attendance:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Сохранение и блокировка дня
+app.post('/api/save-day', async (req, res) => {
+  try {
+    const { date, profession: group_name, savedBy } = req.body;
+    
+    if (!date || !group_name) {
+      return res.status(400).json({ 
+        error: 'Обязательные поля: date, profession' 
+      });
+    }
+    
+    // Сохраняем информацию о сохраненном дне
+    await pool.query(
+      `INSERT INTO saved_days (date, group_name, saved_by) 
+       VALUES ($1, $2, $3)
+       ON CONFLICT (date, group_name) 
+       DO UPDATE SET saved_by = $3, saved_at = CURRENT_TIMESTAMP`,
+      [date, group_name, savedBy || null]
+    );
+    
+    res.json({ 
+      success: true, 
+      message: 'День успешно сохранен и заблокирован',
+      date: date,
+      group: group_name
+    });
+    
+    // Уведомляем всех клиентов
+    io.emit('day_saved', { date, profession: group_name });
+    
+  } catch (error) {
+    console.error('Error saving day:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Получение информации о сохраненных днях
+app.get('/api/saved-days', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT date, group_name, saved_at 
+      FROM saved_days 
+      ORDER BY date DESC
+    `);
+    
+    const savedDays = {};
+    result.rows.forEach(row => {
+      if (!savedDays[row.date]) {
+        savedDays[row.date] = {};
+      }
+      savedDays[row.date][row.group_name] = true;
+    });
+    
+    res.json(savedDays);
+  } catch (error) {
+    console.error('Error getting saved days:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -347,6 +586,12 @@ app.get('/api/attendance/period', async (req, res) => {
   try {
     const { startDate, endDate, group } = req.query;
     
+    if (!startDate || !endDate) {
+      return res.status(400).json({ 
+        error: 'Обязательные параметры: startDate, endDate' 
+      });
+    }
+    
     let query = `
       SELECT s.id as student_id, s.name, s.group_name, a.date, a.hour, a.status
       FROM students s
@@ -355,11 +600,9 @@ app.get('/api/attendance/period', async (req, res) => {
     `;
     
     const params = [startDate, endDate];
-    let paramCount = 2;
     
     if (group) {
-      paramCount++;
-      query += ` WHERE s.group_name = $${paramCount}`;
+      query += ` WHERE s.group_name = $3`;
       params.push(group);
     }
     
@@ -398,70 +641,7 @@ app.get('/api/attendance/period', async (req, res) => {
   }
 });
 
-// Массовое добавление студентов
-app.post('/api/students/batch', async (req, res) => {
-  try {
-    const { students: studentsList } = req.body;
-    console.log('Batch adding students:', studentsList.length);
-    
-    if (!studentsList || !Array.isArray(studentsList)) {
-      return res.status(400).json({ error: 'Missing or invalid students list' });
-    }
-    
-    const results = [];
-    const client = await pool.connect();
-    
-    try {
-      await client.query('BEGIN');
-      
-      for (const studentData of studentsList) {
-        const { name, group, course } = studentData;
-        
-        try {
-          const result = await client.query(
-            'INSERT INTO students (name, group_name, course) VALUES ($1, $2, $3) RETURNING *',
-            [name, group, course]
-          );
-          
-          const inserted = result.rows[0];
-          const studentForClient = {
-            id: inserted.id,
-            name: inserted.name,
-            group: inserted.group_name,
-            course: inserted.course
-          };
-          
-          results.push(studentForClient);
-          
-        } catch (error) {
-          console.error(`Error adding student ${name}:`, error);
-          results.push({ error: error.message, student: studentData });
-        }
-      }
-      
-      await client.query('COMMIT');
-      
-      res.json({ 
-        success: true, 
-        added: results.filter(r => !r.error).length,
-        errors: results.filter(r => r.error).length,
-        results 
-      });
-      
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-    
-  } catch (error) {
-    console.error('Error in batch add:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Получение статистики
+// Статистика за день
 app.get('/api/stats/daily/:date', async (req, res) => {
   try {
     const { date } = req.params;
@@ -484,56 +664,86 @@ app.get('/api/stats/daily/:date', async (req, res) => {
   }
 });
 
-// Старые API для обратной совместимости
-app.get('/api/entries', async (req, res) => {
+// Получение причин пропусков
+app.get('/api/absence-reasons', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM entries ORDER BY id DESC');
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/entries', async (req, res) => {
-  try {
-    const { name, date, note } = req.body;
-    const updatedAt = new Date().toISOString();
-    const result = await pool.query(
-      'INSERT INTO entries (name, date, note, updatedAt) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, date, note, updatedAt]
-    );
-    const inserted = result.rows[0];
-    res.json(inserted);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/entries/:id', async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const { name, date, note } = req.body;
-    const updatedAt = new Date().toISOString();
-    const result = await pool.query(
-      'UPDATE entries SET name=$1, date=$2, note=$3, updatedAt=$4 WHERE id=$5 RETURNING *',
-      [name, date, note, updatedAt, id]
-    );
-    const updated = result.rows[0];
-    res.json(updated);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/api/entries/:id', async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const result = await pool.query('SELECT * FROM entries WHERE id = $1', [id]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    const result = await pool.query(`
+      SELECT student_id, date, hour, reason 
+      FROM absence_reasons 
+      ORDER BY date DESC, student_id, hour
+    `);
     
-    await pool.query('DELETE FROM entries WHERE id = $1', [id]);
-    res.json({ deletedId: id });
+    // Преобразуем в формат для фронтенда
+    const reasonsData = {};
+    
+    result.rows.forEach(row => {
+      const { student_id, date, hour, reason } = row;
+      
+      if (!reasonsData[date]) {
+        reasonsData[date] = {};
+      }
+      if (!reasonsData[date][student_id]) {
+        reasonsData[date][student_id] = {};
+      }
+      
+      reasonsData[date][student_id][hour] = reason;
+    });
+    
+    res.json(reasonsData);
   } catch (error) {
+    console.error('Error getting absence reasons:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Сохранение причины пропуска
+app.post('/api/absence-reasons', async (req, res) => {
+  try {
+    const { studentId, date, hour, reason } = req.body;
+    
+    if (!studentId || !date || hour === undefined) {
+      return res.status(400).json({ 
+        error: 'Обязательные поля: studentId, date, hour' 
+      });
+    }
+    
+    // Проверяем существование студента
+    const studentResult = await pool.query('SELECT * FROM students WHERE id = $1', [studentId]);
+    if (studentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Студент не найден' });
+    }
+    
+    if (reason === null) {
+      // Удаляем запись причины
+      await pool.query(
+        'DELETE FROM absence_reasons WHERE student_id = $1 AND date = $2 AND hour = $3',
+        [studentId, date, hour]
+      );
+    } else {
+      // Вставляем или обновляем запись
+      await pool.query(
+        `INSERT INTO absence_reasons (student_id, date, hour, reason) 
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (student_id, date, hour) 
+         DO UPDATE SET reason = $4, created_at = CURRENT_TIMESTAMP`,
+        [studentId, date, hour, reason]
+      );
+    }
+    
+    const reasonData = {
+      studentId: parseInt(studentId),
+      date: date,
+      hour: hour,
+      reason: reason
+    };
+    
+    res.json({ success: true, ...reasonData });
+    
+    // Уведомляем всех клиентов через WebSocket
+    io.emit('absence_reason_updated', reasonData);
+    
+  } catch (error) {
+    console.error('Error saving absence reason:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -541,12 +751,13 @@ app.delete('/api/entries/:id', async (req, res) => {
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
   try {
-    // Проверяем соединение с базой данных
     await pool.query('SELECT 1');
     res.json({ 
       status: 'OK', 
       timestamp: new Date().toISOString(),
-      database: 'Connected'
+      database: 'Connected',
+      environment: process.env.NODE_ENV || 'development',
+      students_imported: studentsImported
     });
   } catch (error) {
     res.status(500).json({ 
@@ -558,13 +769,26 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Serve main page
+// Serve static files
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.get('/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/main', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'main.html'));
+});
+
+// WebSocket соединения
+io.on('connection', (socket) => {
+  console.log('🔌 Новое WebSocket соединение:', socket.id);
+  
+  socket.on('disconnect', () => {
+    console.log('🔌 WebSocket соединение закрыто:', socket.id);
+  });
 });
 
 // Error handling middleware
@@ -578,12 +802,28 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
+// Запуск сервера
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log('🚀 Server listening on port', PORT);
-  console.log('📊 Database: PostgreSQL (Supabase)');
-  console.log('🔗 Health check: /api/health');
-  console.log('⏰ Почасовой учет посещаемости активирован');
-});
+
+async function startServer() {
+  try {
+    await initializeDatabase();
+    
+    server.listen(PORT, () => {
+      console.log('🚀 Server running on port', PORT);
+      console.log('📊 Database: PostgreSQL (Neon)');
+      console.log('🔗 Health check: /api/health');
+      console.log('⏰ Почасовой учет посещаемости активирован');
+      console.log('🔌 WebSocket server ready');
+      console.log(`📚 Импорт студентов: ${studentsImported ? 'УЖЕ ВЫПОЛНЕН' : 'ОЖИДАЕТСЯ'}`);
+      console.log('✅ Все таблицы проверены и готовы к работе');
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 module.exports = app;
