@@ -36,99 +36,45 @@ let studentsImported = false;
 // Инициализация базы данных
 async function initializeDatabase() {
   try {
-    console.log('🔄 Инициализация базы данных...');
+    console.log('🔄 Проверка подключения к базе данных...');
 
-    // Таблица студентов
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS students (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        group_name TEXT NOT NULL,
-        course INTEGER NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    // Проверяем подключение
+    await pool.query('SELECT NOW()');
+    console.log('✅ Подключение к базе данных успешно');
 
-    // Таблица посещаемости (почасовой учет)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS attendance (
-        id SERIAL PRIMARY KEY,
-        student_id INTEGER NOT NULL,
-        date TEXT NOT NULL,
-        hour INTEGER NOT NULL,
-        status TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(student_id, date, hour),
-        FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
-      )
-    `);
+    // Проверяем существование таблиц
+    const tables = ['students', 'attendance', 'users', 'saved_days', 'absence_reasons', 'import_status'];
+    
+    for (const table of tables) {
+      const tableExists = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = $1
+        )
+      `, [table]);
+      
+      if (!tableExists.rows[0].exists) {
+        console.log(`❌ Таблица ${table} не найдена. Выполните SQL скрипт для создания структуры базы данных.`);
+        return false;
+      }
+    }
 
-    // Таблица пользователей
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        role TEXT NOT NULL,
-        name TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Таблица сохраненных дней (для блокировки редактирования)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS saved_days (
-        id SERIAL PRIMARY KEY,
-        date TEXT NOT NULL,
-        group_name TEXT NOT NULL,
-        saved_by INTEGER,
-        saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(date, group_name),
-        FOREIGN KEY(saved_by) REFERENCES users(id)
-      )
-    `);
-
-    // Таблица для отслеживания импорта
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS import_status (
-        id SERIAL PRIMARY KEY,
-        imported BOOLEAN DEFAULT FALSE,
-        imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Таблица причин пропусков
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS absence_reasons (
-        id SERIAL PRIMARY KEY,
-        student_id INTEGER NOT NULL,
-        date TEXT NOT NULL,
-        hour INTEGER NOT NULL,
-        reason TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(student_id, date, hour),
-        FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
-      )
-    `);
-
-    // Создаем индексы для производительности
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_attendance_student_date ON attendance(student_id, date)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_attendance_student_date_hour ON attendance(student_id, date, hour)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_students_group ON students(group_name)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_absence_reasons_student_date ON absence_reasons(student_id, date)`);
-
-    console.log('✅ Таблицы базы данных инициализированы');
+    console.log('✅ Все таблицы существуют');
 
     // Проверяем статус импорта
     const importStatus = await pool.query('SELECT * FROM import_status ORDER BY id DESC LIMIT 1');
     if (importStatus.rows.length > 0) {
       studentsImported = importStatus.rows[0].imported;
+      console.log(`📊 Статус импорта студентов: ${studentsImported ? 'ВЫПОЛНЕН' : 'НЕ ВЫПОЛНЕН'}`);
+    } else {
+      console.log('ℹ️  Статус импорта не найден');
     }
 
-    // Создаем тестовых пользователей если их нет
+    // Проверяем наличие пользователей
     const usersResult = await pool.query('SELECT COUNT(*) FROM users');
     if (parseInt(usersResult.rows[0].count) === 0) {
+      console.log('👥 Создаем тестовых пользователей...');
       await pool.query(
         `INSERT INTO users (username, password, role, name) VALUES 
          ($1, $2, $3, $4), 
@@ -141,11 +87,16 @@ async function initializeDatabase() {
         ]
       );
       console.log('✅ Тестовые пользователи созданы');
+    } else {
+      console.log(`✅ Пользователи уже существуют: ${usersResult.rows[0].count} записей`);
     }
 
-    // Создаем тестовых студентов если импорт еще не выполнялся
+    // Проверяем наличие студентов
     const studentsResult = await pool.query('SELECT COUNT(*) FROM students');
-    if (parseInt(studentsResult.rows[0].count) === 0 && !studentsImported) {
+    const studentCount = parseInt(studentsResult.rows[0].count);
+    
+    if (studentCount === 0 && !studentsImported) {
+      console.log('👨‍🎓 Создаем тестовых студентов...');
       const testStudents = [
         { name: 'Алишер Усманов', group: '1-260101-00-a', course: 1 },
         { name: 'Фарход Рахимов', group: '1-260101-00-a', course: 1 },
@@ -161,10 +112,15 @@ async function initializeDatabase() {
         );
       }
       console.log('✅ Тестовые студенты созданы');
+    } else {
+      console.log(`✅ Студенты уже существуют: ${studentCount} записей`);
     }
+
+    return true;
 
   } catch (error) {
     console.error('❌ Ошибка инициализации базы данных:', error);
+    return false;
   }
 }
 
@@ -276,6 +232,8 @@ app.delete('/api/students/:id', async (req, res) => {
       
       // Удаляем связанные записи посещаемости
       await client.query('DELETE FROM attendance WHERE student_id = $1', [id]);
+      // Удаляем связанные записи причин пропусков
+      await client.query('DELETE FROM absence_reasons WHERE student_id = $1', [id]);
       // Удаляем студента
       await client.query('DELETE FROM students WHERE id = $1', [id]);
       
@@ -752,11 +710,22 @@ app.post('/api/absence-reasons', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   try {
     await pool.query('SELECT 1');
+    
+    // Получаем статистику базы данных
+    const studentsCount = await pool.query('SELECT COUNT(*) FROM students');
+    const usersCount = await pool.query('SELECT COUNT(*) FROM users');
+    const attendanceCount = await pool.query('SELECT COUNT(*) FROM attendance');
+    
     res.json({ 
       status: 'OK', 
       timestamp: new Date().toISOString(),
       database: 'Connected',
       environment: process.env.NODE_ENV || 'development',
+      statistics: {
+        students: parseInt(studentsCount.rows[0].count),
+        users: parseInt(usersCount.rows[0].count),
+        attendance: parseInt(attendanceCount.rows[0].count)
+      },
       students_imported: studentsImported
     });
   } catch (error) {
@@ -765,6 +734,42 @@ app.get('/api/health', async (req, res) => {
       timestamp: new Date().toISOString(),
       database: 'Disconnected',
       error: error.message 
+    });
+  }
+});
+
+// Проверка структуры базы данных
+app.get('/api/db-check', async (req, res) => {
+  try {
+    const tables = ['students', 'attendance', 'users', 'saved_days', 'absence_reasons', 'import_status'];
+    const tableStatus = {};
+    
+    for (const table of tables) {
+      const tableExists = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = $1
+        )
+      `, [table]);
+      
+      tableStatus[table] = tableExists.rows[0].exists;
+      
+      if (tableExists.rows[0].exists) {
+        const countResult = await pool.query(`SELECT COUNT(*) FROM ${table}`);
+        tableStatus[`${table}_count`] = parseInt(countResult.rows[0].count);
+      }
+    }
+    
+    res.json({
+      success: true,
+      tables: tableStatus,
+      students_imported: studentsImported
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
@@ -807,16 +812,31 @@ const PORT = process.env.PORT || 3000;
 
 async function startServer() {
   try {
-    await initializeDatabase();
+    console.log('🚀 Запуск сервера...');
+    console.log('📊 Проверка базы данных...');
+    
+    const dbInitialized = await initializeDatabase();
+    
+    if (!dbInitialized) {
+      console.log('❌ Проблемы с инициализацией базы данных');
+      console.log('💡 Убедитесь, что:');
+      console.log('   1. Таблицы созданы через SQL скрипт');
+      console.log('   2. Переменная POSTGRES_URL настроена корректно');
+      console.log('   3. База данных Neon доступна');
+    } else {
+      console.log('✅ База данных готова к работе');
+    }
     
     server.listen(PORT, () => {
+      console.log('=================================');
       console.log('🚀 Server running on port', PORT);
       console.log('📊 Database: PostgreSQL (Neon)');
       console.log('🔗 Health check: /api/health');
+      console.log('🔗 DB check: /api/db-check');
       console.log('⏰ Почасовой учет посещаемости активирован');
       console.log('🔌 WebSocket server ready');
-      console.log(`📚 Импорт студентов: ${studentsImported ? 'УЖЕ ВЫПОЛНЕН' : 'ОЖИДАЕТСЯ'}`);
-      console.log('✅ Все таблицы проверены и готовы к работе');
+      console.log(`📚 Импорт студентов: ${studentsImported ? 'ВЫПОЛНЕН' : 'НЕ ВЫПОЛНЕН'}`);
+      console.log('=================================');
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
