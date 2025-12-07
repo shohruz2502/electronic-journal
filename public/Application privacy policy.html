@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Политика конфиденциальности | MyApp</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #3b82f6;
+            --dark-color: #1e293b;
+            --light-color: #f8fafc;
+            --gray-color: #64748b;
+            --border-color: #e2e8f0;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f9fafb;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 2rem 0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.8rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo i {
+            font-size: 2rem;
+        }
+
+        .last-updated {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        /* Main content */
+        main {
+            padding: 3rem 0;
+        }
+
+        .policy-content {
+            background: white;
+            border-radius: 12px;
+            padding: 3rem;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        h1 {
+            color: var(--dark-color);
+            margin-bottom: 1.5rem;
+            font-size: 2.2rem;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 1rem;
+        }
+
+        h2 {
+            color: var(--primary-color);
+            margin: 2.5rem 0 1rem;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        h2 i {
+            color: var(--secondary-color);
+        }
+
+        h3 {
+            color: var(--dark-color);
+            margin: 1.8rem 0 0.8rem;
+            font-size: 1.2rem;
+        }
+
+        p {
+            margin-bottom: 1.2rem;
+            color: var(--gray-color);
+        }
+
+        ul, ol {
+            margin-bottom: 1.5rem;
+            padding-left: 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.8rem;
+            color: var(--gray-color);
+        }
+
+        .highlight-box {
+            background: #f0f9ff;
+            border-left: 4px solid var(--primary-color);
+            padding: 1.5rem;
+            margin: 2rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .highlight-box p {
+            margin-bottom: 0.5rem;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0 2rem;
+            background: #f8fafc;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .data-table th {
+            background: var(--primary-color);
+            color: white;
+            text-align: left;
+            padding: 1rem;
+            font-weight: 600;
+        }
+
+        .data-table td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--gray-color);
+        }
+
+        .data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .data-table tr:hover {
+            background: #f1f5f9;
+        }
+
+        /* Contact section */
+        .contact-section {
+            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+            border-radius: 12px;
+            padding: 2.5rem;
+            margin-top: 3rem;
+            text-align: center;
+        }
+
+        .contact-section h2 {
+            justify-content: center;
+            color: var(--dark-color);
+        }
+
+        .contact-info {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+            margin-top: 1.5rem;
+        }
+
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--gray-color);
+        }
+
+        .contact-item i {
+            color: var(--primary-color);
+            font-size: 1.2rem;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--dark-color);
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+            margin-top: 3rem;
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .app-links {
+            display: flex;
+            gap: 1.5rem;
+        }
+
+        .app-links a {
+            color: white;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: opacity 0.3s;
+        }
+
+        .app-links a:hover {
+            opacity: 0.8;
+        }
+
+        .copyright {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            margin-top: 1.5rem;
+            width: 100%;
+        }
+
+        /* Back to top button */
+        .back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--primary-color);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .back-to-top:hover {
+            background: var(--secondary-color);
+            transform: translateY(-3px);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                text-align: center;
+                gap: 1rem;
+            }
+
+            .policy-content {
+                padding: 2rem 1.5rem;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            h2 {
+                font-size: 1.3rem;
+            }
+
+            .contact-info {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .footer-content {
+                flex-direction: column;
+                gap: 1.5rem;
+            }
+
+            .data-table {
+                display: block;
+                overflow-x: auto;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .policy-content {
+                padding: 1.5rem 1rem;
+            }
+
+            h1 {
+                font-size: 1.6rem;
+            }
+
+            h2 {
+                font-size: 1.2rem;
+            }
+        }
+
+        /* Print styles */
+        @media print {
+            .back-to-top, .app-links {
+                display: none;
+            }
+            
+            body {
+                font-size: 12pt;
+            }
+            
+            .policy-content {
+                box-shadow: none;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="header-content">
+                <div>
+                    <div class="logo">
+                        <i class="fas fa-shield-alt"></i>
+                        <span>MyApp</span>
+                    </div>
+                    <div class="last-updated">Последнее обновление: 07 декабря 2023 года</div>
+                </div>
+                <div>
+                    <a href="#" style="color: white; text-decoration: none; font-weight: 500;">
+                        <i class="fas fa-download"></i> Скачать приложение
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div class="container">
+            <div class="policy-content">
+                <h1>Политика конфиденциальности</h1>
+                
+                <p>Добро пожаловать в MyApp! Мы ценим ваше доверие и обязуемся защищать вашу личную информацию. Настоящая Политика конфиденциальности объясняет, как мы собираем, используем, раскрываем и защищаем ваши данные при использовании нашего приложения.</p>
+                
+                <div class="highlight-box">
+                    <p><strong>Краткая информация:</strong> Мы собираем только те данные, которые необходимы для предоставления наших услуг. Мы никогда не продаем вашу личную информацию третьим лицам и используем современные методы шифрования для защиты ваших данных.</p>
+                </div>
+
+                <h2><i class="fas fa-user-shield"></i> 1. Сбор и использование информации</h2>
+                <p>Мы собираем следующие типы информации для предоставления и улучшения наших услуг:</p>
+                
+                <h3>1.1 Информация, предоставляемая вами</h3>
+                <ul>
+                    <li><strong>Учетные данные Google аккаунта</strong> - только для входа и аутентификации. Мы не имеем доступа к вашему паролю.</li>
+                    <li><strong>Номер телефона</strong> - для верификации аккаунта и восстановления доступа.</li>
+                    <li><strong>Имя и адрес электронной почты</strong> - для персонализации сервиса и связи с вами.</li>
+                    <li><strong>Платежная информация</strong> - обрабатывается исключительно через защищенные платежные шлюзы (Google Pay, Apple Pay, банковские карты). Мы не храним данные ваших карт на наших серверах.</li>
+                </ul>
+
+                <h3>1.2 Автоматически собираемая информация</h3>
+                <ul>
+                    <li><strong>Данные об устройстве</strong> - тип устройства, операционная система, версия приложения.</li>
+                    <li><strong>Данные об использовании</strong> - время сессий, функции приложения, которые вы используете.</li>
+                    <li><strong>Технические данные</strong> - IP-адрес, данные cookies, идентификаторы устройств.</li>
+                </ul>
+
+                <h2><i class="fas fa-lock"></i> 2. Защита данных Google аккаунта</h2>
+                <p>При использовании входа через Google мы соблюдаем строгие правила защиты:</p>
+                <ul>
+                    <li>Мы запрашиваем только минимально необходимые разрешения (базовый профиль и email).</li>
+                    <li>Данные вашего Google аккаунта шифруются при передаче и хранении.</li>
+                    <li>Мы не имеем доступа к вашему паролю Google и не храним его.</li>
+                    <li>Вы можете в любой момент отозвать доступ к вашему Google аккаунту через настройки безопасности Google.</li>
+                    <li>Мы не публикуем что-либо от вашего имени в Google сервисах без вашего явного согласия.</li>
+                </ul>
+
+                <h2><i class="fas fa-credit-card"></i> 3. Обработка платежной информации</h2>
+                <p>Для обеспечения безопасных платежей мы используем:</p>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Тип платежа</th>
+                            <th>Обработчик</th>
+                            <th>Какие данные храним</th>
+                            <th>Уровень безопасности</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Банковские карты</td>
+                            <td>PCI DSS сертифицированные платежные шлюзы</td>
+                            <td>Только токен транзакции (без данных карты)</td>
+                            <td><i class="fas fa-shield-alt" style="color: var(--success-color);"></i> Максимальный</td>
+                        </tr>
+                        <tr>
+                            <td>Google Pay / Apple Pay</td>
+                            <td>Соответствующие платформы</td>
+                            <td>Идентификатор устройства, email</td>
+                            <td><i class="fas fa-shield-alt" style="color: var(--success-color);"></i> Максимальный</td>
+                        </tr>
+                        <tr>
+                            <td>Другие методы</td>
+                            <td>Зависит от метода</td>
+                            <td>Минимально необходимые данные</td>
+                            <td><i class="fas fa-shield-alt" style="color: var(--warning-color);"></i> Высокий</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h2><i class="fas fa-share-alt"></i> 4. Обмен информацией с третьими сторонами</h2>
+                <p>Мы не продаем и не сдаем в аренду вашу личную информацию. Мы можем делиться данными только в следующих случаях:</p>
+                <ol>
+                    <li>С вашего явного согласия</li>
+                    <li>Провайдерам услуг, которые помогают нам работать (хостинг, аналитика, поддержка) - только с обязательствами конфиденциальности</li>
+                    <li>По требованию закона или для защиты наших прав</li>
+                    <li>В случае слияния или продажи компании (с уведомлением пользователей)</li>
+                </ol>
+
+                <h2><i class="fas fa-database"></i> 5. Хранение и удаление данных</h2>
+                <p>Мы храним ваши данные только столько, сколько это необходимо для предоставления услуг:</p>
+                <ul>
+                    <li>Активные данные пользователя - до момента удаления аккаунта</li>
+                    <li>Платежная информация - только токены, обрабатываемые платежными системами</li>
+                    <li>Логи действий - до 12 месяцев для безопасности и аналитики</li>
+                    <li>Вы можете запросить удаление ваших данных в любой момент через настройки приложения или обратившись в поддержку</li>
+                </ul>
+
+                <h2><i class="fas fa-globe-europe"></i> 6. Международная передача данных</h2>
+                <p>Наши серверы расположены в безопасных дата-центрах с соблюдением GDPR и других международных стандартов защиты данных. Мы используем стандартные договорные положения для обеспечения адекватной защиты ваших данных.</p>
+
+                <h2><i class="fas fa-child"></i> 7. Дети и конфиденциальность</h2>
+                <p>Наше приложение не предназначено для детей младше 13 лет. Мы сознательно не собираем информацию от детей. Если вы родитель или опекун и считаете, что ваш ребенок предоставил нам личную информацию, свяжитесь с нами для удаления этих данных.</p>
+
+                <h2><i class="fas fa-cookie-bite"></i> 8. Cookies и технологии отслеживания</h2>
+                <p>Мы используем cookies и аналогичные технологии для:</p>
+                <ul>
+                    <li>Авторизации и безопасности</li>
+                    <li>Запоминания ваших предпочтений</li>
+                    <li>Аналитики использования приложения</li>
+                    <li>Вы можете управлять настройками cookies через параметры вашего браузера или устройства</li>
+                </ul>
+
+                <h2><i class="fas fa-user-edit"></i> 9. Ваши права</h2>
+                <p>В соответствии с законодательством о защите данных вы имеете право:</p>
+                <ul>
+                    <li>Доступ к вашим личным данным</li>
+                    <li>Исправление неточных данных</li>
+                    <li>Удаление ваших данных ("право на забвение")</li>
+                    <li>Ограничение обработки ваших данных</li>
+                    <li>Перенос данных другому поставщику</li>
+                    <li>Возражение против обработки данных</li>
+                    <li>Отзыв согласия в любое время</li>
+                </ul>
+
+                <h2><i class="fas fa-exclamation-circle"></i> 10. Уведомления об изменениях</h2>
+                <p>Мы можем обновлять эту Политику конфиденциальности время от времени. Мы уведомим вас о любых изменениях, разместив новую Политику конфиденциальности на этой странице и отправив уведомление через приложение. Рекомендуем периодически просматривать эту страницу для получения информации об изменениях.</p>
+
+                <div class="contact-section">
+                    <h2><i class="fas fa-headset"></i> Контакты и вопросы</h2>
+                    <p>Если у вас есть вопросы, опасения или запросы относительно этой Политики конфиденциальности или обработки ваших данных, пожалуйста, свяжитесь с нами:</p>
+                    
+                    <div class="contact-info">
+                        <div class="contact-item">
+                            <i class="fas fa-envelope"></i>
+                            <span>privacy@myapp.com</span>
+                        </div>
+                        <div class="contact-item">
+                            <i class="fas fa-phone"></i>
+                            <span>+7 (XXX) XXX-XX-XX</span>
+                        </div>
+                        <div class="contact-item">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <span>г. Москва, ул. Примерная, д. 1</span>
+                        </div>
+                    </div>
+                    
+                    <p style="margin-top: 1.5rem;">Для запросов, связанных с защитой данных в ЕС, вы можете связаться с нашим уполномоченным представителем: <strong>privacy-eu@myapp.com</strong></p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="logo">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>MyApp</span>
+                </div>
+                
+                <div class="app-links">
+                    <a href="#">
+                        <i class="fab fa-google-play"></i>
+                        <span>Google Play</span>
+                    </a>
+                    <a href="#">
+                        <i class="fab fa-app-store"></i>
+                        <span>App Store</span>
+                    </a>
+                    <a href="#">
+                        <i class="fas fa-file-contract"></i>
+                        <span>Условия использования</span>
+                    </a>
+                </div>
+                
+                <div class="copyright">
+                    © 2023 MyApp. Все права защищены. Защита данных — наш приоритет.
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <a href="#" class="back-to-top" id="backToTop">
+        <i class="fas fa-arrow-up"></i>
+    </a>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Back to top button
+            const backToTop = document.getElementById('backToTop');
+            
+            window.addEventListener('scroll', function() {
+                if (window.pageYOffset > 300) {
+                    backToTop.style.display = 'flex';
+                } else {
+                    backToTop.style.display = 'none';
+                }
+            });
+            
+            backToTop.addEventListener('click', function(e) {
+                e.preventDefault();
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                });
+            });
+            
+            // Print functionality
+            const printButton = document.createElement('button');
+            printButton.innerHTML = '<i class="fas fa-print"></i> Распечатать политику';
+            printButton.style.cssText = `
+                position: fixed;
+                bottom: 30px;
+                left: 30px;
+                background: var(--primary-color);
+                color: white;
+                border: none;
+                padding: 12px 20px;
+                border-radius: 8px;
+                cursor: pointer;
+                font-family: inherit;
+                font-weight: 500;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                z-index: 100;
+                transition: all 0.3s;
+            `;
+            
+            printButton.addEventListener('mouseenter', function() {
+                this.style.background = '#1d4ed8';
+                this.style.transform = 'translateY(-2px)';
+            });
+            
+            printButton.addEventListener('mouseleave', function() {
+                this.style.background = 'var(--primary-color)';
+                this.style.transform = 'translateY(0)';
+            });
+            
+            printButton.addEventListener('click', function() {
+                window.print();
+            });
+            
+            document.body.appendChild(printButton);
+            
+            // Highlight current section in navigation
+            const headers = document.querySelectorAll('h2');
+            const observerOptions = {
+                root: null,
+                rootMargin: '-20% 0px -70% 0px',
+                threshold: 0
+            };
+            
+            const observer = new IntersectionObserver(function(entries) {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.color = '#1d4ed8';
+                        entry.target.style.transition = 'color 0.3s';
+                    } else {
+                        entry.target.style.color = '';
+                    }
+                });
+            }, observerOptions);
+            
+            headers.forEach(header => {
+                observer.observe(header);
+            });
+            
+            // Add "last updated" dynamic date
+            const lastUpdated = document.querySelector('.last-updated');
+            const currentDate = new Date();
+            const formattedDate = currentDate.toLocaleDateString('ru-RU', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            lastUpdated.textContent = `Последнее обновление: ${formattedDate}`;
+        });
+    </script>
+</body>
+</html>
