@@ -555,17 +555,38 @@
         .present-cell {
             background: #d4edda;
             color: #155724;
+            font-weight: 700;
         }
 
         .absent-cell {
             background: #f8d7da;
             color: #721c24;
+            font-weight: 700;
+        }
+
+        .unknown-cell {
+            background: #fff3cd;
+            color: #856404;
+            font-weight: 600;
+        }
+
+        .day-nb-cell {
+            background: #fdecea;
+            color: #c0392b;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .day-nb-cell.zero {
+            background: #eef9f1;
+            color: #27ae60;
         }
 
         .total-cell {
             background: var(--primary);
             color: white;
             font-weight: 700;
+            text-align: center;
         }
 
         /* Notifications */
@@ -1255,7 +1276,7 @@
                     </div>
                     <div>
                         <button class="btn btn-primary" id="weeklyApplyFilterBtn">Применить фильтр</button>
-                        <button class="btn btn-success" id="exportNBExcelBtn">📥 Скачать Excel (НБ)</button>
+                        <button class="btn btn-success" id="exportNBExcelBtn">📥 Скачать Excel</button>
                     </div>
                 </div>
             </div>
@@ -1280,6 +1301,11 @@
             </div>
 
             <div class="week-report">
+                <div style="margin-bottom: 12px; display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px;">
+                    <span><strong style="color:#155724;">Б</strong> — был</span>
+                    <span><strong style="color:#721c24;">НБ</strong> — не был</span>
+                    <span><strong style="color:#856404;">—</strong> — не отмечен</span>
+                </div>
                 <div id="weeklyTableContainer" style="overflow-x: auto;">
                     <table class="report-table" id="weeklyTable">
                         <thead id="weeklyTableHead"></thead>
@@ -2423,14 +2449,55 @@
             return controlsHTML;
         }
 
+        function getStudentHourStatus(studentId, dateStr, hour) {
+            return hourlyAttendance[dateStr]?.[studentId]?.[hour] || null;
+        }
+
+        function getStudentDayStats(studentId, dateStr) {
+            const stats = {
+                present: 0,
+                absent: 0,
+                unmarked: 0,
+                presentHours: [],
+                absentHours: []
+            };
+
+            for (let hour = 1; hour <= HOURS_PER_DAY; hour++) {
+                const status = getStudentHourStatus(studentId, dateStr, hour);
+                if (status === 'present') {
+                    stats.present++;
+                    stats.presentHours.push(hour);
+                } else if (status === 'absent') {
+                    stats.absent++;
+                    stats.absentHours.push(hour);
+                } else {
+                    stats.unmarked++;
+                }
+            }
+
+            return stats;
+        }
+
+        function getAttendanceCellInfo(status) {
+            if (status === 'present') {
+                return { text: 'Б', className: 'present-cell', title: 'Был' };
+            }
+            if (status === 'absent') {
+                return { text: 'НБ', className: 'absent-cell', title: 'Не был' };
+            }
+            return { text: '—', className: 'unknown-cell', title: 'Не отмечен' };
+        }
+
         function renderWeeklyTable() {
             const weeklyTableHead = document.getElementById('weeklyTableHead');
             const weeklyTableBody = document.getElementById('weeklyTableBody');
             weeklyTableHead.innerHTML = '';
             weeklyTableBody.innerHTML = '';
+
+            const totalColumns = DAYS_IN_WEEK * HOURS_PER_DAY + DAYS_IN_WEEK + 2;
             
             if (students.length === 0) {
-                weeklyTableBody.innerHTML = '<tr><td colspan="' + (DAYS_IN_WEEK * HOURS_PER_DAY + 2) + '">Нет студентов для отображения</td></tr>';
+                weeklyTableBody.innerHTML = '<tr><td colspan="' + totalColumns + '">Нет студентов для отображения</td></tr>';
                 return;
             }
             
@@ -2442,37 +2509,38 @@
             });
             
             if (filteredStudents.length === 0) {
-                weeklyTableBody.innerHTML = '<tr><td colspan="' + (DAYS_IN_WEEK * HOURS_PER_DAY + 2) + '">Нет студентов по выбранным критериям</td></tr>';
+                weeklyTableBody.innerHTML = '<tr><td colspan="' + totalColumns + '">Нет студентов по выбранным критериям</td></tr>';
                 return;
             }
             
-            // Создаем заголовок таблицы
             let headerHTML = '<tr><th class="student-name-cell" rowspan="2">Студент</th>';
             
-            // Заголовки дней недели
             for (let i = 0; i < DAYS_IN_WEEK; i++) {
                 const date = new Date(currentWeekStart);
                 date.setDate(currentWeekStart.getDate() + i);
                 
-                // Форматируем дату с полным названием дня недели
                 const dayName = date.toLocaleDateString('ru-RU', { weekday: 'long' });
                 const dateNumber = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-                
-                // Добавляем класс day-separator для последнего дня в неделе
                 const isLastDay = i === DAYS_IN_WEEK - 1;
+                
                 headerHTML += `<th colspan="${HOURS_PER_DAY}" ${isLastDay ? '' : 'class="day-separator"'} style="text-align: center;">
                     <div style="font-weight: bold; font-size: 14px; margin-bottom: 4px;">${dayName}</div>
                     <div style="font-size: 12px; opacity: 0.8;">${dateNumber}</div>
                 </th>`;
             }
 
-            headerHTML += '<th rowspan="2">Всего пропусков</th></tr>';
+            for (let i = 0; i < DAYS_IN_WEEK; i++) {
+                const date = new Date(currentWeekStart);
+                date.setDate(currentWeekStart.getDate() + i);
+                const dayShort = date.toLocaleDateString('ru-RU', { weekday: 'short' });
+                headerHTML += `<th rowspan="2" class="day-nb-cell">НБ ${dayShort}</th>`;
+            }
 
-            // Заголовки часов
+            headerHTML += '<th rowspan="2">Всего НБ (ч)</th></tr>';
+
             headerHTML += '<tr>';
             for (let i = 0; i < DAYS_IN_WEEK; i++) {
                 for (let hour = 1; hour <= HOURS_PER_DAY; hour++) {
-                    // Добавляем класс last-hour-of-day для последнего часа каждого дня
                     const isLastHour = hour === HOURS_PER_DAY;
                     const isLastDay = i === DAYS_IN_WEEK - 1;
                     headerHTML += `<th ${isLastHour && !isLastDay ? 'class="last-hour-of-day"' : ''}>${hour}ч</th>`;
@@ -2482,57 +2550,57 @@
             
             weeklyTableHead.innerHTML = headerHTML;
             
-            // Данные студентов
             filteredStudents.forEach(student => {
                 const row = document.createElement('tr');
                 
-                // Имя студента
                 const nameCell = document.createElement('td');
                 nameCell.className = 'student-name-cell';
                 nameCell.textContent = student.name;
                 row.appendChild(nameCell);
                 
                 let totalAbsentHours = 0;
+                const dayAbsentCounts = [];
                 
-                // Данные по дням и часам
                 for (let i = 0; i < DAYS_IN_WEEK; i++) {
                     const date = new Date(currentWeekStart);
                     date.setDate(currentWeekStart.getDate() + i);
                     const dateStr = formatDate(date);
+                    const dayStats = getStudentDayStats(student.id, dateStr);
                     
-                    const dailyHourlyData = hourlyAttendance[dateStr] && hourlyAttendance[dateStr][student.id] ? 
-                        hourlyAttendance[dateStr][student.id] : {};
+                    dayAbsentCounts.push(dayStats.absent);
+                    totalAbsentHours += dayStats.absent;
                     
                     for (let hour = 1; hour <= HOURS_PER_DAY; hour++) {
                         const cell = document.createElement('td');
-                        const status = dailyHourlyData[hour];
+                        const status = getStudentHourStatus(student.id, dateStr, hour);
+                        const cellInfo = getAttendanceCellInfo(status);
                         
-                        // Добавляем класс last-hour-of-day для последнего часа каждого дня (кроме последнего дня)
                         const isLastHour = hour === HOURS_PER_DAY;
                         const isLastDay = i === DAYS_IN_WEEK - 1;
                         if (isLastHour && !isLastDay) {
                             cell.classList.add('last-hour-of-day');
                         }
                         
-                        if (status === 'present') {
-                            cell.className += ' present-cell';
-                            cell.textContent = '✓';
-                        } else if (status === 'absent') {
-                            cell.className += ' absent-cell';
-                            cell.textContent = '✗';
-                            totalAbsentHours++;
-                        } else {
-                            cell.textContent = '';
-                        }
+                        cell.className = cellInfo.className;
+                        cell.textContent = cellInfo.text;
+                        cell.title = cellInfo.title;
                         
                         row.appendChild(cell);
                     }
                 }
+
+                dayAbsentCounts.forEach(count => {
+                    const dayCell = document.createElement('td');
+                    dayCell.className = count > 0 ? 'day-nb-cell' : 'day-nb-cell zero';
+                    dayCell.textContent = `${count}ч`;
+                    dayCell.title = count > 0 ? `Не был ${count} ч.` : 'Пропусков нет';
+                    row.appendChild(dayCell);
+                });
                 
-                // Итоговое количество пропусков
                 const totalCell = document.createElement('td');
                 totalCell.className = 'total-cell';
-                totalCell.textContent = totalAbsentHours;
+                totalCell.textContent = `${totalAbsentHours}ч`;
+                totalCell.title = `Всего не был ${totalAbsentHours} ч.`;
                 row.appendChild(totalCell);
                 
                 weeklyTableBody.appendChild(row);
@@ -2983,24 +3051,6 @@
             renderAbsenceTable();
         }
 
-        function isNBHour(status, reason) {
-            return status === 'absent' && reason !== 'valid';
-        }
-
-        function getStudentNBHoursForDay(studentId, dateStr) {
-            const dailyHourlyData = hourlyAttendance[dateStr]?.[studentId] || {};
-            const dailyReasons = absenceReasons[dateStr]?.[studentId] || {};
-            const nbHours = [];
-
-            for (let hour = 1; hour <= HOURS_PER_DAY; hour++) {
-                if (isNBHour(dailyHourlyData[hour], dailyReasons[hour])) {
-                    nbHours.push(hour);
-                }
-            }
-
-            return nbHours;
-        }
-
         function getWeekDates() {
             const weekDates = [];
             for (let i = 0; i < DAYS_IN_WEEK; i++) {
@@ -3039,14 +3089,14 @@
             weekDates.forEach(date => {
                 const dayName = date.toLocaleDateString('ru-RU', { weekday: 'long' });
                 const dateLabel = date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                summaryHeaders.push(`${dayName} (${dateLabel})`);
+                summaryHeaders.push(`НБ ${dayName} (${dateLabel})`);
             });
-            summaryHeaders.push('Всего НБ (часов)');
+            summaryHeaders.push('Всего НБ (ч)', 'Всего Б (ч)', 'Не отмечено (ч)');
 
             const summaryRows = [
-                [`Отчёт НБ за неделю: ${weekStartStr} — ${weekEndStr}`],
+                [`Недельный отчёт посещаемости: ${weekStartStr} — ${weekEndStr}`],
                 [`Группа: ${groupName}`],
-                [`НБ — пропуски без уважительной причины (неуважительные и без указанной причины)`],
+                [`Б — был, НБ — не был, — — не отмечен`],
                 [],
                 summaryHeaders
             ];
@@ -3054,20 +3104,55 @@
             filteredStudents.forEach((student, index) => {
                 const professionName = professions.find(p => p.id === student.group)?.name || student.group;
                 const row = [index + 1, student.name, professionName];
-                let totalNB = 0;
+                let totalAbsent = 0;
+                let totalPresent = 0;
+                let totalUnmarked = 0;
 
                 weekDates.forEach(date => {
                     const dateStr = formatDate(date);
-                    const nbHours = getStudentNBHoursForDay(student.id, dateStr);
-                    totalNB += nbHours.length;
-                    row.push(nbHours.length > 0 ? `${nbHours.length} (${nbHours.join(', ')}ч)` : '');
+                    const dayStats = getStudentDayStats(student.id, dateStr);
+                    totalAbsent += dayStats.absent;
+                    totalPresent += dayStats.present;
+                    totalUnmarked += dayStats.unmarked;
+                    row.push(dayStats.absent > 0 ? `${dayStats.absent}ч` : '0ч');
                 });
 
-                row.push(totalNB);
+                row.push(`${totalAbsent}ч`, `${totalPresent}ч`, `${totalUnmarked}ч`);
                 summaryRows.push(row);
             });
 
-            const detailHeaders = ['№', 'ФИО', 'Группа', 'Дата', 'День недели', 'Час', 'Тип пропуска'];
+            const gridHeaders = ['№', 'ФИО', 'Группа'];
+            weekDates.forEach(date => {
+                const dayName = date.toLocaleDateString('ru-RU', { weekday: 'short' });
+                const dateLabel = date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+                for (let hour = 1; hour <= HOURS_PER_DAY; hour++) {
+                    gridHeaders.push(`${dayName} ${dateLabel} ${hour}ч`);
+                }
+            });
+            gridHeaders.push('Всего НБ (ч)');
+
+            const gridRows = [gridHeaders];
+
+            filteredStudents.forEach((student, index) => {
+                const professionName = professions.find(p => p.id === student.group)?.name || student.group;
+                const row = [index + 1, student.name, professionName];
+                let totalAbsent = 0;
+
+                weekDates.forEach(date => {
+                    const dateStr = formatDate(date);
+                    for (let hour = 1; hour <= HOURS_PER_DAY; hour++) {
+                        const status = getStudentHourStatus(student.id, dateStr, hour);
+                        const cellInfo = getAttendanceCellInfo(status);
+                        if (status === 'absent') totalAbsent++;
+                        row.push(cellInfo.text);
+                    }
+                });
+
+                row.push(`${totalAbsent}ч`);
+                gridRows.push(row);
+            });
+
+            const detailHeaders = ['№', 'ФИО', 'Группа', 'Дата', 'День недели', 'Час', 'Статус'];
             const detailRows = [detailHeaders];
 
             filteredStudents.forEach((student, index) => {
@@ -3075,17 +3160,12 @@
 
                 weekDates.forEach(date => {
                     const dateStr = formatDate(date);
-                    const dailyHourlyData = hourlyAttendance[dateStr]?.[student.id] || {};
-                    const dailyReasons = absenceReasons[dateStr]?.[student.id] || {};
                     const dayName = date.toLocaleDateString('ru-RU', { weekday: 'long' });
                     const dateLabel = date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
                     for (let hour = 1; hour <= HOURS_PER_DAY; hour++) {
-                        if (!isNBHour(dailyHourlyData[hour], dailyReasons[hour])) continue;
-
-                        const reasonLabel = dailyReasons[hour] === 'invalid'
-                            ? 'Неуважительная'
-                            : 'Причина не указана';
+                        const status = getStudentHourStatus(student.id, dateStr, hour);
+                        const cellInfo = getAttendanceCellInfo(status);
 
                         detailRows.push([
                             index + 1,
@@ -3094,7 +3174,7 @@
                             dateLabel,
                             dayName,
                             `${hour}ч`,
-                            reasonLabel
+                            cellInfo.title
                         ]);
                     }
                 });
@@ -3102,14 +3182,24 @@
 
             const workbook = XLSX.utils.book_new();
             const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+            const gridSheet = XLSX.utils.aoa_to_sheet(gridRows);
             const detailSheet = XLSX.utils.aoa_to_sheet(detailRows);
 
             summarySheet['!cols'] = [
                 { wch: 5 },
                 { wch: 30 },
                 { wch: 45 },
-                ...weekDates.map(() => ({ wch: 18 })),
+                ...weekDates.map(() => ({ wch: 14 })),
+                { wch: 14 },
+                { wch: 12 },
                 { wch: 16 }
+            ];
+            gridSheet['!cols'] = [
+                { wch: 5 },
+                { wch: 30 },
+                { wch: 45 },
+                ...weekDates.flatMap(() => Array(HOURS_PER_DAY).fill({ wch: 10 })),
+                { wch: 14 }
             ];
             detailSheet['!cols'] = [
                 { wch: 5 },
@@ -3118,14 +3208,15 @@
                 { wch: 12 },
                 { wch: 14 },
                 { wch: 8 },
-                { wch: 22 }
+                { wch: 14 }
             ];
 
             XLSX.utils.book_append_sheet(workbook, summarySheet, 'НБ по дням');
+            XLSX.utils.book_append_sheet(workbook, gridSheet, 'По часам');
             XLSX.utils.book_append_sheet(workbook, detailSheet, 'Детализация');
 
             const safeGroupName = groupName.replace(/[\\/:*?"<>|]/g, '_').substring(0, 40);
-            const fileName = `NB_${weekStartStr}_${weekEndStr}_${safeGroupName}.xlsx`;
+            const fileName = `Недельный_отчёт_${weekStartStr}_${weekEndStr}_${safeGroupName}.xlsx`;
 
             XLSX.writeFile(workbook, fileName);
             showNotification('Excel файл успешно загружен', 'success');
