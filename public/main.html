@@ -1255,6 +1255,7 @@
                     </div>
                     <div>
                         <button class="btn btn-primary" id="weeklyApplyFilterBtn">Применить фильтр</button>
+                        <button class="btn btn-success" id="exportNBExcelBtn">📥 Скачать Excel (НБ)</button>
                     </div>
                 </div>
             </div>
@@ -1339,7 +1340,6 @@
                     </div>
                     <div>
                         <button class="btn btn-primary" id="absenceApplyFilterBtn">Применить фильтр</button>
-                        <button class="btn btn-success" id="exportNBExcelBtn">📥 Скачать Excel (НБ)</button>
                     </div>
                 </div>
             </div>
@@ -2776,8 +2776,8 @@
             // Фильтры
             document.getElementById('applyFilterBtn').addEventListener('click', applyFilters);
             document.getElementById('weeklyApplyFilterBtn').addEventListener('click', applyWeeklyFilters);
-            document.getElementById('absenceApplyFilterBtn').addEventListener('click', applyAbsenceFilters);
             document.getElementById('exportNBExcelBtn').addEventListener('click', exportNBToExcel);
+            document.getElementById('absenceApplyFilterBtn').addEventListener('click', applyAbsenceFilters);
             document.getElementById('blacklistApplyFilterBtn').addEventListener('click', applyBlacklistFilters);
             
             // Сохранение посещаемости
@@ -3001,7 +3001,7 @@
             return nbHours;
         }
 
-        function getAbsenceWeekDates() {
+        function getWeekDates() {
             const weekDates = [];
             for (let i = 0; i < DAYS_IN_WEEK; i++) {
                 const date = new Date(currentWeekStart);
@@ -3017,7 +3017,7 @@
                 return;
             }
 
-            const professionFilter = document.getElementById('absenceProfessionSelect').value;
+            const professionFilter = document.getElementById('weeklyProfessionSelect').value;
             const filteredStudents = students.filter(student => {
                 if (professionFilter && student.group !== professionFilter) return false;
                 return true;
@@ -3028,7 +3028,7 @@
                 return;
             }
 
-            const weekDates = getAbsenceWeekDates();
+            const weekDates = getWeekDates();
             const weekStartStr = formatDate(weekDates[0]);
             const weekEndStr = formatDate(weekDates[weekDates.length - 1]);
             const groupName = professionFilter
