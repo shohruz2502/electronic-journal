@@ -969,6 +969,28 @@
             border-left-color: var(--warning);
         }
 
+        .blacklist-student.info {
+            border-left-color: var(--primary);
+        }
+
+        .blacklist-student-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 15px;
+        }
+
+        .blacklist-student-hours {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--danger);
+            white-space: nowrap;
+        }
+
+        .blacklist-student.warning .blacklist-student-hours {
+            color: var(--warning);
+        }
+
         /* Reason cells */
         .reason-cell {
             cursor: pointer;
@@ -1391,6 +1413,14 @@
 
         <!-- Blacklist Page -->
         <div id="blacklistPage" class="tab-content">
+            <div class="week-report-header">
+                <div class="current-week" id="blacklistPeriodRange">Январь 2026 — Май 2026</div>
+                <div class="week-nav">
+                    <button class="btn" id="blacklistPrevPeriod" type="button">◀ Предыдущий период</button>
+                    <button class="btn" id="blacklistNextPeriod" type="button" style="display: none;">Следующий период ▶</button>
+                </div>
+            </div>
+
             <div class="group-selector">
                 <div class="group-filters">
                     <div class="filter-group">
@@ -1408,15 +1438,15 @@
             <div class="blacklist-stats">
                 <div class="blacklist-card danger">
                     <div class="stat-value" id="blacklistCount">0</div>
-                    <div class="stat-label">В черном списке</div>
+                    <div class="stat-label">С 20+ часами НБ</div>
                 </div>
                 <div class="blacklist-card warning">
                     <div class="stat-value" id="warningCount">0</div>
-                    <div class="stat-label">На грани попадания</div>
+                    <div class="stat-label">На грани (15–19 ч.)</div>
                 </div>
                 <div class="blacklist-card info">
                     <div class="stat-value" id="totalAbsenceHours">0</div>
-                    <div class="stat-label">Всего часов пропусков</div>
+                    <div class="stat-label">Часов НБ за период</div>
                 </div>
             </div>
 
@@ -1531,8 +1561,13 @@
         let currentWeekStart = new Date();
         const DAYS_IN_WEEK = 6;
         const HOURS_PER_DAY = 5;
-        const BLACKLIST_THRESHOLD = 48; // Порог для черного списка (48 часов)
-        const WARNING_THRESHOLD = 36; // Порог для предупреждения (36 часов)
+        const NB_LIST_THRESHOLD = 20; // Минимум часов НБ для отображения в списке
+        const NB_WARNING_THRESHOLD = 15; // Порог «на грани» (15–19 часов)
+        const BLACKLIST_PERIODS = [
+            { label: 'Январь 2026 — Май 2026', start: '2026-01-01', end: '2026-05-31' },
+            { label: 'Сентябрь 2025 — Декабрь 2025', start: '2025-09-01', end: '2025-12-31' }
+        ];
+        let blacklistPeriodIndex = 0;
         const API_BASE = '/api';
         let editMode = false;
         let savedDays = {}; // Хранит информацию о сохраненных днях для дежурного
@@ -1670,69 +1705,130 @@
             }
         }
 
-        // ===== ОБНОВЛЕННАЯ ФУНКЦИЯ ЧЕРНОГО СПИСКА =====
+        // ===== ЧЕРНЫЙ СПИСОК / НБ ПО ПЕРИОДАМ =====
 
-        function updateBlacklist() {
-            const blacklistStudents = document.getElementById('blacklistStudents');
-            const professionFilter = document.getElementById('blacklistProfessionSelect').value;
-            
-            // Показываем заглушку с информацией
-            blacklistStudents.innerHTML = `
-                <div class="blacklist-student info">
-                    <div style="text-align: center; padding: 20px;">
-                        <h4>Черный список студентов</h4>
-                        <p>Студенты с большим количеством пропусков будут отображаться здесь</p>
-                        <p style="font-size: 12px; color: var(--gray); margin-top: 10px;">
-                            Порог предупреждения: ${WARNING_THRESHOLD} часов<br>
-                            Порог черного списка: ${BLACKLIST_THRESHOLD} часов
-                        </p>
-                    </div>
-                </div>
-            `;
-            
-            // Временная реализация статистики
-            updateTemporaryBlacklistStats();
+        function getBlacklistPeriod() {
+            return BLACKLIST_PERIODS[blacklistPeriodIndex];
         }
 
-        function updateTemporaryBlacklistStats() {
+        function isDateInBlacklistPeriod(dateStr) {
+            const period = getBlacklistPeriod();
+            return dateStr >= period.start && dateStr <= period.end;
+        }
+
+        function getStudentAbsenceHoursInPeriod(studentId) {
+            let hours = 0;
+            Object.keys(hourlyAttendance).forEach(date => {
+                if (!isDateInBlacklistPeriod(date)) return;
+                const dailyData = hourlyAttendance[date][studentId];
+                if (!dailyData) return;
+                Object.values(dailyData).forEach(status => {
+                    if (status === 'absent') hours++;
+                });
+            });
+            return hours;
+        }
+
+        function updateBlacklistPeriodDisplay() {
+            const period = getBlacklistPeriod();
+            document.getElementById('blacklistPeriodRange').textContent = period.label;
+
+            const prevBtn = document.getElementById('blacklistPrevPeriod');
+            const nextBtn = document.getElementById('blacklistNextPeriod');
+            prevBtn.style.display = blacklistPeriodIndex < BLACKLIST_PERIODS.length - 1 ? '' : 'none';
+            nextBtn.style.display = blacklistPeriodIndex > 0 ? '' : 'none';
+        }
+
+        function navigateBlacklistPeriod(direction) {
+            const newIndex = blacklistPeriodIndex + direction;
+            if (newIndex < 0 || newIndex >= BLACKLIST_PERIODS.length) return;
+            blacklistPeriodIndex = newIndex;
+            updateBlacklistPeriodDisplay();
+            updateBlacklist();
+        }
+
+        function updateBlacklist() {
+            const blacklistStudentsEl = document.getElementById('blacklistStudents');
             const professionFilter = document.getElementById('blacklistProfessionSelect').value;
-            
-            // Фильтруем студентов по профессии
+            const period = getBlacklistPeriod();
+
+            updateBlacklistPeriodDisplay();
+
+            const sectionTitle = document.querySelector('#blacklistPage .blacklist-section h3');
+            if (sectionTitle) {
+                sectionTitle.textContent = `НБ учеников (20+ часов) — ${period.label}`;
+            }
+
             const filteredStudents = students.filter(student => {
                 if (professionFilter && student.group !== professionFilter) return false;
                 return true;
             });
-            
-            let blacklistCount = 0;
+
+            const studentsWithNb = filteredStudents
+                .map(student => ({
+                    student,
+                    hours: getStudentAbsenceHoursInPeriod(student.id)
+                }))
+                .filter(item => item.hours >= NB_LIST_THRESHOLD)
+                .sort((a, b) => b.hours - a.hours);
+
+            if (studentsWithNb.length === 0) {
+                blacklistStudentsEl.innerHTML = `
+                    <div class="blacklist-student info">
+                        <div style="text-align: center; padding: 20px;">
+                            <h4>Нет студентов с 20+ часами НБ</h4>
+                            <p>За период ${period.label} никто не набрал 20 и более часов пропусков</p>
+                            <p style="font-size: 12px; color: var(--gray); margin-top: 10px;">
+                                Порог отображения: ${NB_LIST_THRESHOLD} часов
+                            </p>
+                        </div>
+                    </div>
+                `;
+            } else {
+                blacklistStudentsEl.innerHTML = studentsWithNb.map(({ student, hours }) => {
+                    const professionName = professions.find(p => p.id === student.group)?.name || student.group;
+                    const cardClass = hours >= 36 ? '' : ' warning';
+                    return `
+                        <div class="blacklist-student${cardClass}">
+                            <div class="blacklist-student-header">
+                                <div>
+                                    <div style="font-weight: 700; font-size: 16px;">${student.name}</div>
+                                    <div style="font-size: 13px; color: var(--gray); margin-top: 4px;">${professionName}</div>
+                                </div>
+                                <div class="blacklist-student-hours">${hours} ч.</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            updateBlacklistStats();
+        }
+
+        function updateBlacklistStats() {
+            const professionFilter = document.getElementById('blacklistProfessionSelect').value;
+
+            const filteredStudents = students.filter(student => {
+                if (professionFilter && student.group !== professionFilter) return false;
+                return true;
+            });
+
+            let nbListCount = 0;
             let warningCount = 0;
             let totalAbsenceHours = 0;
-            
-            // Подсчитываем статистику на основе локальных данных
+
             filteredStudents.forEach(student => {
-                let studentAbsenceHours = 0;
-                
-                // Проходим по всем датам в hourlyAttendance
-                Object.keys(hourlyAttendance).forEach(date => {
-                    const dailyData = hourlyAttendance[date][student.id];
-                    if (dailyData) {
-                        Object.values(dailyData).forEach(status => {
-                            if (status === 'absent') {
-                                studentAbsenceHours++;
-                                totalAbsenceHours++;
-                            }
-                        });
-                    }
-                });
-                
-                if (studentAbsenceHours >= BLACKLIST_THRESHOLD) {
-                    blacklistCount++;
-                } else if (studentAbsenceHours >= WARNING_THRESHOLD) {
+                const studentAbsenceHours = getStudentAbsenceHoursInPeriod(student.id);
+                totalAbsenceHours += studentAbsenceHours;
+
+                if (studentAbsenceHours >= NB_LIST_THRESHOLD) {
+                    nbListCount++;
+                } else if (studentAbsenceHours >= NB_WARNING_THRESHOLD) {
                     warningCount++;
                 }
             });
-            
-            // Обновляем статистику
-            document.getElementById('blacklistCount').textContent = blacklistCount;
+
+            document.getElementById('blacklistCount').textContent = nbListCount;
             document.getElementById('warningCount').textContent = warningCount;
             document.getElementById('totalAbsenceHours').textContent = totalAbsenceHours;
         }
@@ -2847,6 +2943,8 @@
             document.getElementById('exportNBExcelBtn').addEventListener('click', exportNBToExcel);
             document.getElementById('absenceApplyFilterBtn').addEventListener('click', applyAbsenceFilters);
             document.getElementById('blacklistApplyFilterBtn').addEventListener('click', applyBlacklistFilters);
+            document.getElementById('blacklistPrevPeriod').addEventListener('click', () => navigateBlacklistPeriod(1));
+            document.getElementById('blacklistNextPeriod').addEventListener('click', () => navigateBlacklistPeriod(-1));
             
             // Сохранение посещаемости
             document.getElementById('saveAttendanceBtn').addEventListener('click', saveAllAttendance);
