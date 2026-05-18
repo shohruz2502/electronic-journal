@@ -1339,6 +1339,7 @@
                     </div>
                     <div>
                         <button class="btn btn-primary" id="absenceApplyFilterBtn">Применить фильтр</button>
+                        <button class="btn btn-success" id="exportNBExcelBtn">📥 Скачать Excel (НБ)</button>
                     </div>
                 </div>
             </div>
@@ -1491,6 +1492,7 @@
     </div>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script>
         // ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ И КОНСТАНТЫ =====
         let currentUser = null;
@@ -2775,6 +2777,7 @@
             document.getElementById('applyFilterBtn').addEventListener('click', applyFilters);
             document.getElementById('weeklyApplyFilterBtn').addEventListener('click', applyWeeklyFilters);
             document.getElementById('absenceApplyFilterBtn').addEventListener('click', applyAbsenceFilters);
+            document.getElementById('exportNBExcelBtn').addEventListener('click', exportNBToExcel);
             document.getElementById('blacklistApplyFilterBtn').addEventListener('click', applyBlacklistFilters);
             
             // Сохранение посещаемости
@@ -2978,6 +2981,154 @@
 
         function applyAbsenceFilters() {
             renderAbsenceTable();
+        }
+
+        function isNBHour(status, reason) {
+            return status === 'absent' && reason !== 'valid';
+        }
+
+        function getStudentNBHoursForDay(studentId, dateStr) {
+            const dailyHourlyData = hourlyAttendance[dateStr]?.[studentId] || {};
+            const dailyReasons = absenceReasons[dateStr]?.[studentId] || {};
+            const nbHours = [];
+
+            for (let hour = 1; hour <= HOURS_PER_DAY; hour++) {
+                if (isNBHour(dailyHourlyData[hour], dailyReasons[hour])) {
+                    nbHours.push(hour);
+                }
+            }
+
+            return nbHours;
+        }
+
+        function getAbsenceWeekDates() {
+            const weekDates = [];
+            for (let i = 0; i < DAYS_IN_WEEK; i++) {
+                const date = new Date(currentWeekStart);
+                date.setDate(currentWeekStart.getDate() + i);
+                weekDates.push(date);
+            }
+            return weekDates;
+        }
+
+        function exportNBToExcel() {
+            if (typeof XLSX === 'undefined') {
+                showNotification('Библиотека Excel не загружена. Обновите страницу', 'error');
+                return;
+            }
+
+            const professionFilter = document.getElementById('absenceProfessionSelect').value;
+            const filteredStudents = students.filter(student => {
+                if (professionFilter && student.group !== professionFilter) return false;
+                return true;
+            });
+
+            if (filteredStudents.length === 0) {
+                showNotification('Нет студентов для экспорта', 'error');
+                return;
+            }
+
+            const weekDates = getAbsenceWeekDates();
+            const weekStartStr = formatDate(weekDates[0]);
+            const weekEndStr = formatDate(weekDates[weekDates.length - 1]);
+            const groupName = professionFilter
+                ? (professions.find(p => p.id === professionFilter)?.name || professionFilter)
+                : 'Все группы';
+
+            const summaryHeaders = ['№', 'ФИО', 'Группа'];
+            weekDates.forEach(date => {
+                const dayName = date.toLocaleDateString('ru-RU', { weekday: 'long' });
+                const dateLabel = date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                summaryHeaders.push(`${dayName} (${dateLabel})`);
+            });
+            summaryHeaders.push('Всего НБ (часов)');
+
+            const summaryRows = [
+                [`Отчёт НБ за неделю: ${weekStartStr} — ${weekEndStr}`],
+                [`Группа: ${groupName}`],
+                [`НБ — пропуски без уважительной причины (неуважительные и без указанной причины)`],
+                [],
+                summaryHeaders
+            ];
+
+            filteredStudents.forEach((student, index) => {
+                const professionName = professions.find(p => p.id === student.group)?.name || student.group;
+                const row = [index + 1, student.name, professionName];
+                let totalNB = 0;
+
+                weekDates.forEach(date => {
+                    const dateStr = formatDate(date);
+                    const nbHours = getStudentNBHoursForDay(student.id, dateStr);
+                    totalNB += nbHours.length;
+                    row.push(nbHours.length > 0 ? `${nbHours.length} (${nbHours.join(', ')}ч)` : '');
+                });
+
+                row.push(totalNB);
+                summaryRows.push(row);
+            });
+
+            const detailHeaders = ['№', 'ФИО', 'Группа', 'Дата', 'День недели', 'Час', 'Тип пропуска'];
+            const detailRows = [detailHeaders];
+
+            filteredStudents.forEach((student, index) => {
+                const professionName = professions.find(p => p.id === student.group)?.name || student.group;
+
+                weekDates.forEach(date => {
+                    const dateStr = formatDate(date);
+                    const dailyHourlyData = hourlyAttendance[dateStr]?.[student.id] || {};
+                    const dailyReasons = absenceReasons[dateStr]?.[student.id] || {};
+                    const dayName = date.toLocaleDateString('ru-RU', { weekday: 'long' });
+                    const dateLabel = date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+                    for (let hour = 1; hour <= HOURS_PER_DAY; hour++) {
+                        if (!isNBHour(dailyHourlyData[hour], dailyReasons[hour])) continue;
+
+                        const reasonLabel = dailyReasons[hour] === 'invalid'
+                            ? 'Неуважительная'
+                            : 'Причина не указана';
+
+                        detailRows.push([
+                            index + 1,
+                            student.name,
+                            professionName,
+                            dateLabel,
+                            dayName,
+                            `${hour}ч`,
+                            reasonLabel
+                        ]);
+                    }
+                });
+            });
+
+            const workbook = XLSX.utils.book_new();
+            const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+            const detailSheet = XLSX.utils.aoa_to_sheet(detailRows);
+
+            summarySheet['!cols'] = [
+                { wch: 5 },
+                { wch: 30 },
+                { wch: 45 },
+                ...weekDates.map(() => ({ wch: 18 })),
+                { wch: 16 }
+            ];
+            detailSheet['!cols'] = [
+                { wch: 5 },
+                { wch: 30 },
+                { wch: 45 },
+                { wch: 12 },
+                { wch: 14 },
+                { wch: 8 },
+                { wch: 22 }
+            ];
+
+            XLSX.utils.book_append_sheet(workbook, summarySheet, 'НБ по дням');
+            XLSX.utils.book_append_sheet(workbook, detailSheet, 'Детализация');
+
+            const safeGroupName = groupName.replace(/[\\/:*?"<>|]/g, '_').substring(0, 40);
+            const fileName = `NB_${weekStartStr}_${weekEndStr}_${safeGroupName}.xlsx`;
+
+            XLSX.writeFile(workbook, fileName);
+            showNotification('Excel файл успешно загружен', 'success');
         }
 
         function applyBlacklistFilters() {
